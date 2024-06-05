@@ -70,21 +70,25 @@ char getBuffer(const char* buffer, pthread_mutex_t* mutex, pthread_cond_t* full_
 
 
 void* readInputFromStdin(void* arg) {
+    int safetyIndexToAvoidLongLoopsWhileTesting = 0;
     char* checkForStop = malloc(sizeof(char) * 5);
     while (true) {
+        if (safetyIndexToAvoidLongLoopsWhileTesting++ == 400) {
+            perror("Safety Index Met \n");
+            break;
+        }
         if (count_1 == BUFFER_SIZE) break; // breaking out of the main loop if the buffer size is met
 
         char ch; // initializing a char variable
         while (true) {
             ch = getchar();
+            if (ch == EOF) break; // only adding it to my buffer and looping if the char is not a  end of file
             if (ch == '\n') { // when encounter a newline, the code in this if statement checks that the 'STOP' command did not come before it. This is done by getting the last 4 letters before the newline and checking if they say 'STOP'. If so, we are setting the stop condition to true and breaking out of the loop.
                 strncpy(checkForStop, buffer_1 + producer_index_1 - 5, 4);
                 checkForStop[4] = '\0';
                 if (strcmp(checkForStop, "STOP") == 0) shouldStopInput = true;
                 printf("STOP: |%s|\n", checkForStop);
-                break;
             }
-            if (ch == EOF) break; // only adding it to my buffer and looping if the char is not a newline or end of file
             putInBuffer(ch, buffer_1, &mutex_1, &full_1, &count_1, &producer_index_1); // calling helper function to properly place the char in the buffer.
         }
     }
@@ -94,7 +98,12 @@ void* readInputFromStdin(void* arg) {
 
 
 void* replaceLineSeparatorWithSpace(void* arg) {
+    int safetyIndexToAvoidLongLoopsWhileTesting = 0;
     while (true) {
+        if (safetyIndexToAvoidLongLoopsWhileTesting++ == 400) {
+            perror("Safety Index Met \n");
+            break;
+        }
         if (shouldStopInput) break;
         char ch = getBuffer(buffer_1, &mutex_1, &full_1, &count_1, &consumer_index_1);
         if (ch == '\n') ch = ' ';
