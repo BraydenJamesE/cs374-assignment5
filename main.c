@@ -19,9 +19,6 @@
 
 #define BUFFER_SIZE 50050
 #define NUM_ITEMS_PER_LINE 80 // this value is the number of items that should be outputted per line. It is less than the buffer size, allowing us to model the buffer as being unbounded.
-#define LOOP_LIMIT_SAFETY_VAL_ONE 400
-#define LOOP_LIMIT_SAFETY_VAL_TWO 400
-
 
 /* Buffer 1 Globals */
 char buffer_1[BUFFER_SIZE];
@@ -48,9 +45,6 @@ int consumer_index_3 = 0; // index where the consumer thread will put the next i
 pthread_mutex_t mutex_3 = PTHREAD_MUTEX_INITIALIZER; // creating the mutex for buffer 3
 pthread_cond_t full_3 = PTHREAD_COND_INITIALIZER; // conditional variable for buffer 3
 
-
-bool outputComplete = false;
-bool inputComplete = false;
 char charsOfInterest[] = "+";
 
 
@@ -64,28 +58,15 @@ bool isCharOfInterest(char ch) {
 
 
 bool containsStop(char* buffer, int producer_index, bool isNewlineReplacedBySpace) {
-    char* checkForStop = malloc(sizeof(char) * 5);
-    char* lastFew = malloc(sizeof(char) * 15);
-    size_t sizeofLastFew = sizeof(lastFew);
-    memset(lastFew, '\0', sizeofLastFew);
-    strncpy(checkForStop, buffer + producer_index - 4, 4);
-    strncpy(lastFew, buffer + producer_index - 11, 10);
-    checkForStop[4] = '\0';
-    fprintf(stderr, "Last Few: %s\n", lastFew);
-    fprintf(stderr, "CheckforStopString: %s\n", checkForStop);
-    fprintf(stderr, "buffer[producer_index - 5] == '\n': |%d| and buffer[producer_index - 5] = |%c|\n", buffer[producer_index - 5] == '\n', buffer[producer_index - 5]);
-    if (strcmp(checkForStop, "STOP") == 0){
-        if (isNewlineReplacedBySpace && buffer[producer_index - 5] == ' ') {
-            fprintf(stderr, "RETURNING TRUE (CONTAINS SPACE).\n");
-            return true;
-        }
-        else if (!isNewlineReplacedBySpace && buffer[producer_index - 5] == '\n') {
-            fprintf(stderr, "RETURNING TRUE (CONTAINS newline).\n");
-            return true;
-        }
+    char* checkForStop = malloc(sizeof(char) * 5); // creating a string for
+    strncpy(checkForStop, buffer + producer_index - 4, 4); // getting a substring of the buffer, 4 chars back. I am checking to see if this string has the word "STOP"
+    checkForStop[4] = '\0'; // appending the null terminator;
+    if (strcmp(checkForStop, "STOP") == 0){ // checking if the buffer, 4 spots back, has the words STOP
+        free(checkForStop); // free allocating memory
+        if (isNewlineReplacedBySpace && buffer[producer_index - 5] == ' ') return true; // if the buffer has the word stop and the newline char has been replaced with a space, I am checking if there is a space 5 chars back to ensure that the STOP is isolated. If so, return true
+        else if (!isNewlineReplacedBySpace && buffer[producer_index - 5] == '\n') return true; // similar to the command above expect checking for newline
     }
-    fprintf(stderr, "RETURNING FALSE.\n");
-    return false;
+    return false; // if neither return true was triggered above, return false
 } // end of "containsStop" function
 
 
@@ -103,34 +84,28 @@ char getBuffer(const char* buffer, pthread_mutex_t* mutex, pthread_cond_t* full_
     while (*count == 0) {
         pthread_cond_wait(full_t, mutex); // the buffer is empty, based on the condition of the loop, so wait until the buffer has data
     }
-    char ch = buffer[(*consumer_index)++];
-    *count -= 1;
+    char ch = buffer[(*consumer_index)++]; // getting the char
+    *count -= 1; // iterating the count
     pthread_mutex_unlock(mutex); // unlocking the mutex to signal that the lineSeparator thread can process this data
-    return ch;
+    return ch; // returning the char
 } // end of "getBuffer1" function
 
 
 
 void* readInputFromStdin(void* arg) {
-    int safetyIndexToAvoidLongLoopsWhileTesting = 0;
-    int safetyIndexToAvoidLongLoopsWhileTestingTwo = 0;
-
     char* checkForStop = malloc(sizeof(char) * 5);
     bool breakOut = false;
     while (true) {
         char ch; // initializing a char variable
         while (true) {
-            ch = getchar();
+            ch = getchar(); // getting the char from stdin;
             if (ch == EOF) {
-                break; // only adding it to my buffer and looping if the char is not a  end of file
+                break; // only adding it to my buffer and looping if the char is not an end of file
             }
             if (ch == '\n') { // when encounter a newline, the code in this if statement checks that the 'STOP' command did not come before it. This is done by getting the last 4 letters before the newline and checking if they say 'STOP'. If so, we are setting the stop condition to true and breaking out of the loop.
-                breakOut = containsStop(buffer_1, producer_index_1, false);
+                breakOut = containsStop(buffer_1, producer_index_1, false); // checking if the buffer contains the stop command. If it does, break out
                 putInBuffer(ch, buffer_1, &mutex_1, &full_1, &count_1, &producer_index_1); // calling helper function to properly place the char in the buffer.
-                if (breakOut) {
-                    fprintf(stderr, "BREAKING FROM readInputFromStdin\n");
-                    break;
-                }
+                if (breakOut) break;
             }
             else {
                 putInBuffer(ch, buffer_1, &mutex_1, &full_1, &count_1, &producer_index_1); // calling helper function to properly place the char in the buffer.
@@ -142,44 +117,40 @@ void* readInputFromStdin(void* arg) {
     return NULL; // returning a null pointer as the functions return value
 } // end of "getInput" function
 
+
 void* replaceLineSeparatorWithSpace(void* arg) {
     while (true) {
         char ch = getBuffer(buffer_1, &mutex_1, &full_1, &count_1, &consumer_index_1); // getting the char from the buffer
         bool needsToStop = false;
-        if (ch != '\n') putInBuffer(ch, buffer_2, &mutex_2, &full_2, &count_2, &producer_index_2); // read the char into buffer 2
+        if (ch != '\n') putInBuffer(ch, buffer_2, &mutex_2, &full_2, &count_2, &producer_index_2); // read the char into buffer 2 if it doesn't equal the newline
         else { // in the case that the char is a newline we have to handle it more carefully
-            fprintf(stderr, "NEWLINE FOUND\n");
-            needsToStop = containsStop(buffer_2, producer_index_2, true);
+            needsToStop = containsStop(buffer_2, producer_index_2, true); // we need to stop if the buffer contains the stop command. Calling upon helper function to check
             if (needsToStop) {
-                putInBuffer('\n', buffer_2, &mutex_2, &full_2, &count_2, &producer_index_2); // read the char into buffer 2
-                fprintf(stderr, "BREAKING FROM replaceLineSeparatorWithSpace\n");
-                break;
+                putInBuffer('\n', buffer_2, &mutex_2, &full_2, &count_2, &producer_index_2); // we keep the newline appended to the back on this. All other newlines are turned into spaces
+                break; // breaking out
             }
-            else putInBuffer(' ', buffer_2, &mutex_2, &full_2, &count_2, &producer_index_2); // read the char into buffer 2
+            else putInBuffer(' ', buffer_2, &mutex_2, &full_2, &count_2, &producer_index_2); // appending a space in place of the newline; the program only makes it here if the current char is a newline and the STOP command is not present.
         }
-    }
+    } // end of while loop
     return NULL;
 } // end of "replaceLineSeparatorWithSpace" function
 
 
 void* replacePlusSignPairWithCaret(void* arg) {
-    int safetyIndexToAvoidLongLoopsWhileTesting = 0;
-    char previousCh = '\0';
+    char previousCh = ' ';
     while (true) {
-        char ch = getBuffer(buffer_2, &mutex_2, &full_2, &count_2, &consumer_index_2);
+        char ch = getBuffer(buffer_2, &mutex_2, &full_2, &count_2, &consumer_index_2); // getting the char from the buffer
         if (previousCh == '+' && ch == '+') { // if the previous char and the current char are both '+'
             ch = '^'; // set the current char to caret
-            previousCh = '\0'; // reset the previous char
-            count_3 -= 1;
+            previousCh = ' '; // reset the previous char
+            count_3 -= 1; // decrementing these values so that we override the last plus
             producer_index_3 -= 1;
             putInBuffer(ch, buffer_3, &mutex_3, &full_3, &count_3, &producer_index_3); // insert the caret into the buffer;
         }
         else { // if the last two chars were not pluses, then carry on as normal, placing the current ch in the buffer
-            if (ch == '\n' && containsStop(buffer_3, producer_index_3, true)) {
+            if (ch == '\n' && containsStop(buffer_3, producer_index_3, true)) { // if the stop command is break, break out
                 putInBuffer(ch, buffer_3, &mutex_3, &full_3, &count_3, &producer_index_3); // insert char into buffer
-                fprintf(stderr, "BREAKING FROM replacePlusSignPairWithCaret\n");
-                stop_index = producer_index_3 - 7;
-                fprintf(stderr, "stop_index = |%d|  and    buffer[stop_index] = |%c|\n", stop_index, buffer_3[stop_index]);
+                stop_index = producer_index_3 - 7; // once the stop command has made it to buffer three, we store this value to track it for the sake of the output
                 break;
             }
             putInBuffer(ch, buffer_3, &mutex_3, &full_3, &count_3, &producer_index_3); // insert char into buffer
@@ -191,44 +162,25 @@ void* replacePlusSignPairWithCaret(void* arg) {
 
 
 void* getOutput(void* arg) {
-    int safetyIndexToAvoidLongLoopsWhileTesting = 0;
-    int linesWritten = 0;
+    int linesWritten = 0; // tracking the lines we have written
+    int linesNeeded = 0; // tracking the lines we need to write
     while (true) {
         char ch;
         int i = 0; // tracking an index to ensure only 80 chars are sent
-        fprintf(stderr, "linesWritten: %d\n", linesWritten);
-        if (stop_index != -1 && stop_index / NUM_ITEMS_PER_LINE == linesWritten) outputComplete = true;
-        if (outputComplete) {
-            printf("\n");
-            fprintf(stderr, "BREAKING FROM getOutput initial outComplete\n");
-            break;
-        }
+        linesNeeded = (stop_index != -1) ? (stop_index / NUM_ITEMS_PER_LINE) : 0; // getting the number of lines that we do need to write. This is based on when the stop index var is given a value other than it's initial (-1). Until then, we assume that we need to write forever.
+        if (linesNeeded != 0 && linesWritten == linesNeeded) break;  // if the linesNeeded are not 0, meaning we have a stop index and the lines written equal the lines needed, meaning we have written all that is necessary, we break.
+
         while (i++ < NUM_ITEMS_PER_LINE) { // only printing 80 chars, plus the newline that is outside of this loop
-            if (consumer_index_3 == stop_index){
-                outputComplete = true;
-                fprintf(stderr, "BREAKING FROM getOutput (consumer_index_3 is stop index - 2)\n");
-                break;
-            }
-            ch = getBuffer(buffer_3, &mutex_3, &full_3, &count_3, &consumer_index_3);
-            printf("%c", ch);
-        } // end of while loop
+            if (consumer_index_3 == stop_index) break; // if we encounter the stop_index, just break;
+            ch = getBuffer(buffer_3, &mutex_3, &full_3, &count_3, &consumer_index_3); // get the char from the buffer
+            printf("%c", ch); // print the char
+        } // end of while loop (i++ < NUM_ITEMS_PER_LINE)
+
         printf("\n"); // printing the newline char
         linesWritten += 1;
-    }
-    fprintf(stderr, "BREAKING FROM getOutput (end of function) \n");
+    } // end of while loop (true)
     return NULL;
 } // end of "getOutput" function
-
-
-void printVarsForTesting() { // creating a function to print the buffers for testing purposes.
-    buffer_1[strlen(buffer_1)] = '\0';
-    buffer_2[strlen(buffer_2)] = '\0';
-    buffer_3[strlen(buffer_3)] = '\0';
-    fprintf(stderr, "buffer_1:\n %s\n\n", buffer_1);
-    fprintf(stderr, "buffer_2:\n %s\n\n", buffer_2);
-    fprintf(stderr, "buffer_3:\n %s\n\n", buffer_3);
-} // end of "printVarsForTesting"
-
 
 
 int main(int argc, char* argv[]) {
@@ -251,7 +203,6 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "Error creating output_t thread\n");
         return THREAD_CREATE_ERROR;
     }
-
 
     /* Joining the threads including error handling */
     if (pthread_join(input_t, NULL) != 0) {                     // joining input_t
